@@ -79,5 +79,11 @@ async def show_product(product_id: int) -> Product | dict:
     return {"message": "Product not found"}
 
 @app.get("/products/search")
-async def show_users():
-    return {"users": mock_db}
+async def search_product(keyword: str, category: str | None = None, limit: int | None = None) -> list[Product]:
+    found = []
+    for product in sample_products:
+        if keyword.lower() in product["name"].lower():
+            if product["category"].lower() == category.lower():
+                found.append(Product(**product))
+
+    return found[:limit]
