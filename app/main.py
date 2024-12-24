@@ -1,10 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Cookie, Response
 from fastapi.responses import FileResponse
-
-from models.models import User, UserCreate, Product
+from random import randint
+from models.models import User, Product
 
 app = FastAPI()
-mock_db: list[UserCreate] = []
+
+sample_user: dict = {"username": "user123", "password": "password123"}
+mock_db: list[User] = [User(**sample_user)]
+sessions: dict = {}
 
 sample_product_1 = {
     "product_id": 123,
@@ -41,7 +44,9 @@ sample_product_5 = {
     "price": 299.99
 }
 
-sample_products = [sample_product_1, sample_product_2, sample_product_3, sample_product_4, sample_product_5]
+sample_products = [sample_product_1, sample_product_2, sample_product_3,
+                   sample_product_4, sample_product_5]
+
 
 @app.get("/")
 async def root():
@@ -60,15 +65,31 @@ async def check_adult(user: User) -> User:
     return user
 
 
+@app.get("/user")
+async def get_user(session_token: Cookie):
+    ...
+
+
 @app.get("/show_users")
 async def show_users():
     return {"users": mock_db}
 
 
 @app.post("/user_create")
-async def create_user(user: UserCreate) -> UserCreate:
+async def create_user(user: User) -> User:
     mock_db.append(user)
     return user
+
+
+@app.post("/login")
+async def login(user: User, response: Response):
+    for person in mock_db:
+        if person.username == user.username and person.password == user.password:
+            session_token = "".join([chr(randint(0, 127)) for _ in range(0, 32)])
+            sessions[session_token] = user
+            response.set_cookie(key="session_token", value=session_token, httponly=True)
+            return {"message": "куки установлены"}
+    return {"message": "Invalid username or password"}
 
 
 @app.get("/product/{product_id}")
@@ -78,8 +99,10 @@ async def show_product(product_id: int) -> Product | dict:
             return Product(**product)
     return {"message": "Product not found"}
 
+
 @app.get("/products/search")
-async def search_product(keyword: str, category: str | None = None, limit: int | None = None) -> list[Product]:
+async def search_product(keyword: str, category: str | None = None,
+                         limit: int | None = None) -> list[Product]:
     found = []
     for product in sample_products:
         if keyword.lower() in product["name"].lower():
