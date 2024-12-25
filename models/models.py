@@ -3,10 +3,10 @@ from decimal import Decimal
 
 
 class User(BaseModel):
-    name: str
+    name: str = "default_user"
     username: str
     password: str
-    email: EmailStr
+    email: EmailStr = "test@test.com"
     age: PositiveInt | None = Field(default=None, lt=130)
     is_subscribed: bool = False
     is_adult: bool = False

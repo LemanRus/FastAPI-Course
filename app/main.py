@@ -66,8 +66,12 @@ async def check_adult(user: User) -> User:
 
 
 @app.get("/user")
-async def get_user(session_token: Cookie):
-    ...
+async def get_user(session_token = Cookie()):
+    print(session_token)
+    user = sessions.get(session_token)
+    if user:
+        return user.dict()
+    return {"message": "Unauthorized"}
 
 
 @app.get("/show_users")
@@ -85,7 +89,7 @@ async def create_user(user: User) -> User:
 async def login(user: User, response: Response):
     for person in mock_db:
         if person.username == user.username and person.password == user.password:
-            session_token = "".join([chr(randint(0, 127)) for _ in range(0, 32)])
+            session_token = "".join([chr(randint(32, 120)) for _ in range(0, 32)])
             sessions[session_token] = user
             response.set_cookie(key="session_token", value=session_token, httponly=True)
             return {"message": "куки установлены"}
