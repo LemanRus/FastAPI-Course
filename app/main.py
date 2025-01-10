@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Cookie, Response
+from fastapi import FastAPI, Cookie, Response, Header, Request, HTTPException
 from fastapi.responses import FileResponse
 from random import randint
+
 from models.models import User, Product
 
 app = FastAPI()
@@ -114,3 +115,14 @@ async def search_product(keyword: str, category: str | None = None,
                 found.append(Product(**product))
 
     return found[:limit]
+
+
+@app.get("/headers")
+async def get_geaders(request: Request):
+    if (user_agent := request.headers["user-agent"]) and (accept_language := request.headers["accept-language"]):
+        return {
+            "User-Agent": user_agent,
+            "Accept-Language": accept_language
+        }
+    raise HTTPException(status_code=400, detail="Required Headers Error")
+
