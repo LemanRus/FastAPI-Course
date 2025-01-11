@@ -1,13 +1,20 @@
-from fastapi import FastAPI, Cookie, Response, Header, Request, HTTPException
-from fastapi.responses import FileResponse
+import jwt
+from datetime import datetime, timedelta
 from random import randint
+
+from fastapi import FastAPI, Cookie, Response, Header, Request, HTTPException, Depends, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import FileResponse
 
 from models.models import User, Product
 
 app = FastAPI()
+security = HTTPBasic()
 
-sample_user: dict = {"username": "user123", "password": "password123"}
-mock_db: list[User] = [User(**sample_user)]
+SECRET_KEY = "mysecretkey"
+ALGORITHM = "HS256"
+
+mock_db: list[User] = [User(**{"username": "user1", "password": "pass1"}), User(**{"username": "user2", "password": "pass2"})]
 sessions: dict = {}
 
 sample_product_1 = {
@@ -49,6 +56,25 @@ sample_products = [sample_product_1, sample_product_2, sample_product_3,
                    sample_product_4, sample_product_5]
 
 
+# симуляционный пример
+def get_user_from_db(username: str):
+    for user in mock_db:
+        if user.username == username:
+            return user
+    return None
+
+
+def authenticate_user(credentials: HTTPBasicCredentials = Depends(security)):
+    user = get_user_from_db(credentials.username)
+    if user is None or user.password != credentials.password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    return user
+
+
+def create_jwt_token(data: dict):
+    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
+
 @app.get("/")
 async def root():
     return FileResponse("./app/index.html")
@@ -87,14 +113,16 @@ async def create_user(user: User) -> User:
 
 
 @app.post("/login")
-async def login(user: User, response: Response):
-    for person in mock_db:
-        if person.username == user.username and person.password == user.password:
-            session_token = "".join([chr(randint(32, 120)) for _ in range(0, 32)])
-            sessions[session_token] = user
-            response.set_cookie(key="session_token", value=session_token, httponly=True)
-            return {"message": "куки установлены"}
-    return {"message": "Invalid username or password"}
+async def login(user_in: User):
+    for user in mock_db:
+        if user.get("username") == user_in.username and user.get("password") == user_in.password:
+            return {"access_token": create_jwt_token({"sub": user_in.username}), "token_type": "bearer"}
+    return {"error": "Invalid credentials"}
+
+
+@app.get("/login")
+async def login(user: User = Depends(authenticate_user)):
+    return {"message": "You got my secret, welcome"}
 
 
 @app.get("/product/{product_id}")
@@ -126,3 +154,7 @@ async def get_geaders(request: Request):
         }
     raise HTTPException(status_code=400, detail="Required Headers Error")
 
+
+@app.get("/protected_resource/")
+def get_protected_resource(user: User = Depends(authenticate_user)):
+    return {"message": "You have access to the protected resource!", "user_info": user}
