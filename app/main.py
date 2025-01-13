@@ -3,16 +3,18 @@ from datetime import datetime, timedelta
 from random import randint
 
 from fastapi import FastAPI, Cookie, Response, Header, Request, HTTPException, Depends, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import  HTTPBasicCredentials, OAuth2PasswordBearer
 from fastapi.responses import FileResponse
 
 from models.models import User, Product
 
 app = FastAPI()
-security = HTTPBasic()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
 
 SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
+EXP_TIME = timedelta(minutes=5)
 
 mock_db: list[User] = [User(**{"username": "user1", "password": "pass1"}), User(**{"username": "user2", "password": "pass2"})]
 sessions: dict = {}
@@ -64,15 +66,25 @@ def get_user_from_db(username: str):
     return None
 
 
-def authenticate_user(credentials: HTTPBasicCredentials = Depends(security)):
+def authenticate_user(credentials: HTTPBasicCredentials = Depends(oauth2_scheme)):
     user = get_user_from_db(credentials.username)
     if user is None or user.password != credentials.password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    return user
+    return True
 
 
 def create_jwt_token(data: dict):
+    data.update({"exp": datetime.now() + EXP_TIME})
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_jwt_token(token: str = Depends(oauth2_scheme)):
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="The token has expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 @app.get("/")
@@ -114,9 +126,8 @@ async def create_user(user: User) -> User:
 
 @app.post("/login")
 async def login(user_in: User):
-    for user in mock_db:
-        if user.get("username") == user_in.username and user.get("password") == user_in.password:
-            return {"access_token": create_jwt_token({"sub": user_in.username}), "token_type": "bearer"}
+    if authenticate_user(user_in):
+        return {"access_token": create_jwt_token({"sub": user_in.username}), "token_type": "bearer"}
     return {"error": "Invalid credentials"}
 
 
@@ -156,5 +167,6 @@ async def get_geaders(request: Request):
 
 
 @app.get("/protected_resource/")
-def get_protected_resource(user: User = Depends(authenticate_user)):
-    return {"message": "You have access to the protected resource!", "user_info": user}
+def get_protected_resource(verified_user: dict = Depends(verify_jwt_token)):
+    if verified_user:
+        return {'message': 'Access to the protected resource is allowed'}
